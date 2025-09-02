@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      margin: 0;
+      background: #fff;
+      font-family: sans-serif;
+    }
+
+    #chart {
+      width: 100%;
+      height: 100vh;
+    }
+
+    #controls {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      background: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+
+<body style="height: 100%; margin: 0">
+  <div id="container" style="height: 100%"></div>
+  <div id="controls">
+    <select id="tipo">
+      <option value="EXP">Exportações</option>
+      <option value="IMP">Importações</option>
+      <option value="BAL">Balança Comercial (Exp - Imp)</option>
+    </select>
+  </div>
+  <script type="text/javascript"
+    src="https://echarts.apache.org/en/js/vendors/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script type="text/javascript" src="https://fastly.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
+
+  <script type="text/javascript">
+    var dom = document.getElementById('container');
+    var myChart = echarts.init(dom, null, {
+      renderer: 'canvas',
+      useDirtyRect: false
+    });
+    var option;
+
+    function getOption(data, tipo) {
+      const cores = {
+        EXP: ['#e0f3db', '#43a2ca'],
+        IMP: ['#fee5d9', '#de2d26'],
+        BAL: ['#d73027', '#ffffbf', '#1a9850']
+      };
+      const titulos = {
+        EXP: "Volume de Exportações do Brasil",
+        IMP: "Volume de Importações do Brasil",
+        BAL: "Volume da Balança Comercial do Brasil"
+      };
+
+      const anos = Object.keys(data.EXP).sort();
+      const serieTemporalExp = anos.map(ano => data.EXP[ano].reduce((acc, cur) => acc + cur.us_value, 0));
+      const serieTemporalImp = anos.map(ano => data.IMP[ano].reduce((acc, cur) => acc + cur.us_value, 0));
+      const serieTemporalBal = anos.map(ano => data.BAL[ano].reduce((acc, cur) => acc + cur.us_value, 0));
+      const anoFinal = anos[anos.length - 1];
+
+      return {
+        title: {
+          text: `${titulos[tipo]} (Ano ${anoFinal})`,
+          subtext: "Dados do Monitor do Comércio Exterior Brasileiro",
+          left: 'center',
+          top: 15
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          formatter: function (params) {
+            if (!Array.isArray(params)) {
+              if (params.seriesType === 'map') {
+                let result = params.name + '<br/>';
+                if (params.value != null && !isNaN(params.value)) {
+                  result += '<b>US$ ' + (params.value / 1e9).toFixed(2) + ' bi<b>';
+                } else {
+                  result += '<i>(sem dados)</i>';
+                }
+                return result;
+              }
+              return params.name;
+            }
+            const ano = params[0].axisValue;
+            let result = `<b>Ano ${ano}</b><br/>`;
+            params.forEach(p => {
+              result += `${p.marker} ${p.seriesName}: US$ ${(p.value / 1e9).toFixed(2)} bi<br/>`;
+            });
+            return result;
+          }
+        },
+        visualMap: {
+          right: 70,
+          top: 100,
+          itemHeight: 330,
+          calculable: true,
+          formatter: function (value) {
+            return (value / 1e9).toFixed(0);
+          }
+        },
+        legend: {
+          data: ['Exportações', 'Importações', 'Balança Comercial'],
+          bottom: '35%',
+          left: 'center'
+        },
+        graphic: {
+          type: 'text', right: 45, top: 145, rotation: Math.PI / -2,
+          style: { text: 'Volume negociado com o país (Bilhões de US$)', textAlign: 'center', fill: '#333', font: '12px sans-serif' }
+        },
+        grid: {
+          left: '8%',
+          right: '5%',
+          bottom: '15%',
+          height: '20%',
+          containLabel: true
+        },
+        geo: {
+          map: 'world',
+          clip: true,
+          roam: true,
+          selectedMode: false,
+          top: 80,
+          left: 200,
+          right: 200,  
+          bottom: 300,
+        },
+        xAxis: { type: 'category', data: anos, gridIndex: 0 },
+        yAxis: { type: 'value', name: 'Bilhões de US$', gridIndex: 0, axisLabel: { formatter: v => (v / 1e9).toFixed(0) } },
+        dataZoom: [{ type: 'slider', bottom: 35 }], // Adicionado slider
+        series: [
+          {
+            id: 'map-series',
+            name: titulos[tipo],
+            type: 'map',
+            geoIndex: 0,
+            tooltip: { trigger: 'item' },
+            data: []
+          },
+          {
+            name: 'Exportações', type: 'line', smooth: true, data: serieTemporalExp,
+            xAxisIndex: 0, yAxisIndex: 0, color: '#43a2ca',
+            visualMap: false
+          },
+          {
+            name: 'Importações', type: 'line', smooth: true, data: serieTemporalImp,
+            xAxisIndex: 0, yAxisIndex: 0, color: '#de2d26',
+            visualMap: false
+          },
+          {
+            name: 'Balança Comercial', type: 'line', smooth: true, data: serieTemporalBal,
+            xAxisIndex: 0, yAxisIndex: 0, color: '#006d2c',
+            visualMap: false
+          }
+        ]
+      };
+    }
+
+    fetch("./BR-exportacoes_importacoes_2025.json")
+      .then(res => res.json())
+      .then(data => {
+        // >> EDIÇÃO 7: Lógica principal atualizada
+        const select = document.getElementById("tipo");
+        const anos = Object.keys(data.EXP).sort();
+        let anoAtual = anos[anos.length - 1]; // Guarda o ano atual
+
+        // Cria o gráfico base com as 3 linhas
+        myChart.setOption(getOption(data, select.value));
+
+        function updateMap(ano, tipo) {
+          const serieMapa = data[tipo][ano].map(d => ({ name: d.name, value: d.us_value }));
+          const valoresMapa = serieMapa.map(d => d.value).filter(v => v != null);
+          let visualMapConfig;
+
+          if (tipo === 'BAL') {
+            const maxAbs = Math.max(1, ...valoresMapa.map(v => Math.abs(v)));
+            visualMapConfig = { min: -maxAbs, max: maxAbs, inRange: { color: ['#d73027', '#ffffbf', '#1a9850'] } };
+          } else {
+            visualMapConfig = { min: Math.min(...valoresMapa), max: Math.max(...valoresMapa), inRange: { color: tipo === 'EXP' ? ['#e0f3db', '#43a2ca'] : ['#fee5d9', '#de2d26'] } };
+          }
+
+          myChart.setOption({
+            title: { text: `${getOption(data, select.value).title.text.split(' (')[0]} (Ano ${ano})` },
+            visualMap: {
+              min: visualMapConfig.min,
+              max: visualMapConfig.max,
+              inRange: visualMapConfig.inRange
+            },
+            series: [{
+              id: 'map-series',
+              data: serieMapa,
+              name: getOption(data, tipo).series[0].name,
+            }]
+          });
+        }
+
+        // Carregamento inicial do mapa
+        updateMap(anoAtual, select.value);
+
+        // Atualiza o mapa ao passar o mouse na linha do tempo
+        myChart.on('updateAxisPointer', (event) => {
+          if (event.axesInfo && event.axesInfo[0]) {
+            const anoIndex = event.axesInfo[0].value;
+            if (anos[anoIndex]) {
+              anoAtual = anos[anoIndex];
+              updateMap(anoAtual, select.value);
+            }
+          }
+        });
+
+        // Event listener do select mantido, mas chama a função de update
+        select.addEventListener("change", e => {
+          updateMap(anoAtual, e.target.value);
+        });
+      });
+
+    window.addEventListener('resize', myChart.resize);
+  </script>
+</body>
+
+</html>
